@@ -4,4 +4,5 @@
 Usage:
 
 chmod +x downloader
+
 ./downloader
