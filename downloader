@@ -1,0 +1,90 @@
+#!/bin/bash
+
+
+APPLICATION="${0##*/}"
+USAGE="Xcode Downloader
+usage: $APPLICATION [-u AppleID] [-p password] [-x XcodeVersion]
+
+Options:
+	-u AppleID			AppleID
+	-p password			The password for the user
+	-x xCodeVersion		The xCode version (14.0)
+
+"
+
+error() {
+    local ecode="$1"
+    shift
+    echo "$*" 1>&2
+    exit "$ecode"
+}
+
+while getopts 'u:x:p:' options; do
+	case "$options" in
+        u) user_id=${OPTARG};;
+		p) password=${OPTARG};;
+		x) xcode_version=${OPTARG};;
+		\?) error 2 "$USAGE";;
+	esac
+done
+
+if [[ -z "${user_id}" ]]; then
+	read -p "Enter your AppleID: " user_id
+	if [[ -z "${user_id}" ]] ;then
+		error 2 "$USAGE"
+	fi
+fi
+
+if [[ -z "${password}" ]]; then
+	read -sp "Enter your password: " password
+	echo ""
+	if [[ -z "${password}" ]]; then
+		error 2 "$USAGE"
+	fi
+fi
+
+if [[ -z "${xcode_version}" ]]; then
+	read -p "Enter the Xcode version " xcode_version
+	if [[ -z "${xcode_version}" ]]; then
+		error 2 "$USAGE"
+	fi
+fi
+
+case "${xcode_version}" in
+4.*|5.*|6.[0-1].*)
+	x="x";;
+6.[2-9]*)
+	x="X";;
+*)
+	x="X";;
+esac
+
+
+echo "Retrieving App ID"
+app_id=$(curl -s -i "https://developer.apple.com/services-account/download?path=/Developer_Tools/${x}code_${xcode_version}/${x}code_${xcode_version}.dmg" | awk -F '[\?\&]' '/appIdKey/ { print $2 };' | sed 's/appIdKey=//')
+echo "App ID: <$app_id>"
+if [[ ${app_id} ]]; then
+	echo "Logging in"
+	rm -f cookies.txt 
+	curl -s -L -c cookies.txt \
+			-d "path=/devcenter/download.action?path%3D/Developer_Tools/${x}code_${xcode_version}/${x}code_${xcode_version}.dmg" \
+			-d "appIdKey=${app_id}" \
+			-d "accNameLocked=false" \
+			-d "language=US-EN" \
+			-d "Env=PROD" \
+			-d "appleId=${user_id}" \
+			-d "accountPassword=${password}" \
+		"https://idmsa.apple.com/IDMSWebAuth/authenticate" >/dev/null
+	if grep myacinfo cookies.txt >/dev/null; then
+		echo "Login succeeded."
+		echo "Downloading Xcode ${xcode_version}"
+		curl -LO -b cookies.txt "https://developer.apple.com/devcenter/download.action?path=/Developer_Tools/${x}code_${xcode_version}/${x}code_${xcode_version}.dmg"
+	else
+		echo "Login failed."
+	fi
+	rm cookies.txt
+else
+	echo "Error"
+fi
+
+exit 0
